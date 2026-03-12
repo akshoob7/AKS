@@ -1,6 +1,10 @@
 import express from "express";
 import cors from "cors";
 import OpenAI from "openai";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
@@ -57,6 +61,15 @@ app.post("/api/chat", async (req, res) => {
     res.end();
   }
 });
+
+// Serve static frontend in production
+if (process.env.NODE_ENV === "production") {
+  const distPath = path.join(__dirname, "../dist");
+  app.use(express.static(distPath));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
