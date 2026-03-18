@@ -1,5 +1,8 @@
 "use client";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SpeechRecognition = any;
+
 import { useEffect, useRef, useCallback, useTransition } from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -8,6 +11,7 @@ import {
     SendIcon,
     XIcon,
     LoaderIcon,
+    Mic,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import * as React from "react";
@@ -114,7 +118,9 @@ export function AnimatedAIChat() {
         maxHeight: 200,
     });
     const [inputFocused, setInputFocused] = useState(false);
+    const [isListening, setIsListening] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const recognitionRef = useRef<SpeechRecognition | null>(null);
 
     const scrollToBottom = useCallback(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -229,6 +235,35 @@ export function AnimatedAIChat() {
     const removeAttachment = (index: number) => {
         setAttachments((prev) => prev.filter((_, i) => i !== index));
     };
+
+    const handleVoiceInput = useCallback(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SR) return;
+
+        if (isListening) {
+            recognitionRef.current?.stop();
+            return;
+        }
+
+        const recognition: SpeechRecognition = new SR();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onstart = () => setIsListening(true);
+        recognition.onend = () => setIsListening(false);
+        recognition.onresult = (e: { results: SpeechRecognitionResultList }) => {
+            const transcript = Array.from(e.results)
+                .map((r: SpeechRecognitionResult) => r[0].transcript)
+                .join("");
+            setValue(transcript);
+            adjustHeight();
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+    }, [isListening, adjustHeight]);
 
     return (
         <div className="min-h-screen flex flex-col w-full items-center justify-center bg-transparent text-white p-6 relative overflow-hidden">
@@ -408,6 +443,28 @@ export function AnimatedAIChat() {
                                         className="absolute inset-0 bg-white/[0.05] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                                         layoutId="button-highlight"
                                     />
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={handleVoiceInput}
+                                    whileTap={{ scale: 0.94 }}
+                                    className={cn(
+                                        "p-2 rounded-lg transition-colors relative",
+                                        isListening
+                                            ? "text-red-400"
+                                            : "text-white/40 hover:text-white/90"
+                                    )}
+                                >
+                                    {isListening ? (
+                                        <motion.div
+                                            animate={{ scale: [1, 1.2, 1] }}
+                                            transition={{ duration: 1, repeat: Infinity }}
+                                        >
+                                            <Mic className="w-4 h-4" />
+                                        </motion.div>
+                                    ) : (
+                                        <Mic className="w-4 h-4" />
+                                    )}
                                 </motion.button>
                             </div>
 
