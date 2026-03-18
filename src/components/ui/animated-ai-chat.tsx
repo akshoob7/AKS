@@ -102,14 +102,19 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
 );
 Textarea.displayName = "Textarea";
 
+type ContentPart =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } };
+
 interface Message {
     role: "user" | "assistant";
-    content: string;
+    content: string | ContentPart[];
 }
 
 export function AnimatedAIChat() {
     const [value, setValue] = useState("");
-    const [attachments, setAttachments] = useState<string[]>([]);
+    const [attachments, setAttachments] = useState<File[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -147,15 +152,42 @@ export function AnimatedAIChat() {
         }
     };
 
+    const fileToBase64 = (file: File): Promise<string> =>
+        new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+
     const handleSendMessage = async () => {
         const userText = value.trim();
-        if (!userText || isStreaming) return;
+        if ((!userText && attachments.length === 0) || isStreaming) return;
 
-        const userMessage: Message = { role: "user", content: userText };
+        let messageContent: string | ContentPart[];
+        if (attachments.length > 0) {
+            const parts: ContentPart[] = [];
+            if (userText) parts.push({ type: "text", text: userText });
+            for (const file of attachments) {
+                if (file.type.startsWith("image/")) {
+                    const base64 = await fileToBase64(file);
+                    parts.push({ type: "image_url", image_url: { url: base64 } });
+                } else {
+                    const text = await file.text();
+                    parts.push({ type: "text", text: `[File: ${file.name}]\n${text}` });
+                }
+            }
+            messageContent = parts;
+        } else {
+            messageContent = userText;
+        }
+
+        const userMessage: Message = { role: "user", content: messageContent };
         const updatedMessages = [...messages, userMessage];
 
         setMessages(updatedMessages);
         setValue("");
+        setAttachments([]);
         adjustHeight(true);
         setIsStreaming(true);
 
@@ -227,9 +259,12 @@ export function AnimatedAIChat() {
         }
     };
 
-    const handleAttachFile = () => {
-        const mockFileName = `file-${Math.floor(Math.random() * 1000)}.pdf`;
-        setAttachments((prev) => [...prev, mockFileName]);
+    const handleAttachFile = () => fileInputRef.current?.click();
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        setAttachments((prev) => [...prev, ...files]);
+        e.target.value = "";
     };
 
     const removeAttachment = (index: number) => {
@@ -354,8 +389,18 @@ export function AnimatedAIChat() {
                                             : "bg-white/[0.05] border border-white/[0.08] text-white/85 rounded-tl-sm"
                                     )}
                                 >
-                                    {msg.content || (
-                                        <TypingDots />
+                                    {typeof msg.content === "string" ? (
+                                        msg.content || <TypingDots />
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            {msg.content.map((part, pi) =>
+                                                part.type === "image_url" ? (
+                                                    <img key={pi} src={part.image_url.url} className="max-w-full rounded-lg" alt="attachment" />
+                                                ) : (
+                                                    <span key={pi}>{part.text}</span>
+                                                )
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </motion.div>
@@ -370,6 +415,14 @@ export function AnimatedAIChat() {
                         animate={{ scale: 1 }}
                         transition={{ delay: 0.1 }}
                     >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden"
+                            multiple
+                            accept="image/*,.pdf,.txt,.md,.csv"
+                            onChange={handleFileChange}
+                        />
                         <div className="p-4">
                             <Textarea
                                 ref={textareaRef}
@@ -415,11 +468,16 @@ export function AnimatedAIChat() {
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.9 }}
                                         >
-                                            <span>{file}</span>
+                                            {file.type.startsWith("image/") && (
+                                                <img
+                                                    src={URL.createObjectURL(file)}
+                                                    className="w-6 h-6 rounded object-cover"
+                                                    alt=""
+                                                />
+                                            )}
+                                            <span className="max-w-[120px] truncate">{file.name}</span>
                                             <button
-                                                onClick={() =>
-                                                    removeAttachment(index)
-                                                }
+                                                onClick={() => removeAttachment(index)}
                                                 className="text-white/40 hover:text-white transition-colors"
                                             >
                                                 <XIcon className="w-3 h-3" />
@@ -473,11 +531,11 @@ export function AnimatedAIChat() {
                                 onClick={handleSendMessage}
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.98 }}
-                                disabled={isStreaming || !value.trim()}
+                                disabled={isStreaming || (!value.trim() && attachments.length === 0)}
                                 className={cn(
                                     "px-4 py-2 rounded-lg text-sm font-medium transition-all",
                                     "flex items-center gap-2",
-                                    value.trim() && !isStreaming
+                                    (value.trim() || attachments.length > 0) && !isStreaming
                                         ? "bg-white text-[#0A0A0B] shadow-lg shadow-white/10"
                                         : "bg-white/[0.05] text-white/40"
                                 )}

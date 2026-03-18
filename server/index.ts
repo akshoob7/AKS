@@ -39,9 +39,13 @@ const SYSTEM_PROMPT = `You are GARAGII, an expert AI assistant specializing excl
 
 If a user asks about anything outside of garages and car parts, politely decline and let them know you only cover automotive and garage topics. Keep responses concise, practical, and helpful.`;
 
+type ContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 interface Message {
   role: "user" | "assistant";
-  content: string;
+  content: string | ContentPart[];
 }
 
 app.post("/api/chat", async (req, res) => {
@@ -56,10 +60,11 @@ app.post("/api/chat", async (req, res) => {
       model: "gpt-4o",
       max_tokens: 1024,
       stream: true,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         ...messages,
-      ],
+      ] as any,
     });
 
     for await (const chunk of stream) {
