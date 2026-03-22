@@ -20,12 +20,29 @@ import cors from "cors";
 import OpenAI from "openai";
 import path from "path";
 import { fileURLToPath } from "url";
+import swaggerUi from "swagger-ui-express";
+import swaggerJsdoc from "swagger-jsdoc";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "Garagii API",
+      version: "1.0.0",
+      description: "Backend API for the Garagii AI chat assistant",
+    },
+    servers: [{ url: "http://localhost:3001" }],
+  },
+  apis: ["./server/index.ts"],
+});
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -48,6 +65,75 @@ interface Message {
   content: string | ContentPart[];
 }
 
+/**
+ * @openapi
+ * /api/chat:
+ *   post:
+ *     summary: Send a chat message to Garagii AI
+ *     description: Accepts a conversation history and streams back an AI response using Server-Sent Events (SSE).
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - messages
+ *             properties:
+ *               messages:
+ *                 type: array
+ *                 description: Conversation history
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - role
+ *                     - content
+ *                   properties:
+ *                     role:
+ *                       type: string
+ *                       enum: [user, assistant]
+ *                     content:
+ *                       oneOf:
+ *                         - type: string
+ *                           description: Plain text message
+ *                         - type: array
+ *                           description: Multipart message (text + images)
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               type:
+ *                                 type: string
+ *                                 enum: [text, image_url]
+ *                               text:
+ *                                 type: string
+ *                               image_url:
+ *                                 type: object
+ *                                 properties:
+ *                                   url:
+ *                                     type: string
+ *                                     description: Base64 data URL or remote URL
+ *           example:
+ *             messages:
+ *               - role: user
+ *                 content: What brake pads do you recommend for a 2019 Ford F-150?
+ *     responses:
+ *       200:
+ *         description: SSE stream of AI response chunks
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *             example: |
+ *               data: {"text":"For a 2019 Ford F-150..."}\n\n
+ *               data: {"done":true}\n\n
+ *       500:
+ *         description: Streaming error event
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *             example: "data: {\"error\":\"Missing API key\"}\n\n"
+ */
 app.post("/api/chat", async (req, res) => {
   const { messages }: { messages: Message[] } = req.body;
 
