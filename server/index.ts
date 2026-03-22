@@ -37,7 +37,7 @@ const swaggerSpec = swaggerJsdoc({
       version: "1.0.0",
       description: "Backend API for the Garagii AI chat assistant",
     },
-    servers: [{ url: "http://localhost:3001" }],
+    servers: [{ url: "/" }],
   },
   apis: ["./server/index.ts"],
 });
